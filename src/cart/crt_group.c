@@ -565,9 +565,6 @@ crt_grp_lc_destroy(struct crt_grp_priv *grp_priv)
 
 	D_ASSERT(grp_priv != NULL);
 
-	if (grp_priv->gp_lookup_cache == NULL)
-		return 0;
-
 	L1_arr = grp_priv->gp_lookup_cache;
 	for (i = 0 ; i < CRT_NA_TYPE_NUM; i++) {
 		if (L1_arr[i] == NULL)
