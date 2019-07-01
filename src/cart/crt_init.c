@@ -248,7 +248,7 @@ out:
 int
 crt_init_opt(crt_group_id_t grpid, uint32_t flags, crt_init_options_t *opt)
 {
-	crt_phy_addr_t	 addr = NULL, addr_env;
+	crt_phy_addr_t	 addr = NULL, addr_env = NULL;
 	struct timeval	 now;
 	unsigned int	 seed;
 	const char	*path;
