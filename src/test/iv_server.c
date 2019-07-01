@@ -58,6 +58,8 @@
 #define _SERVER
 #include "iv_common.h"
 
+#define DEFAULT_PROGRESS_CTX_IDX	0
+
 static char g_hostname[100];
 
 static d_rank_t g_my_rank;
@@ -1204,6 +1206,9 @@ int main(int argc, char **argv)
 	rc = crt_rank_self_set(my_rank);
 	assert(rc == 0);
 
+	rc = crt_swim_init(DEFAULT_PROGRESS_CTX_IDX);
+	D_ASSERTF(rc == 0, "crt_swim_init() failed rc: %d.\n", rc);
+
 	grp = crt_group_lookup(IV_GRP_NAME);
 	if (grp == NULL) {
 		D_ERROR("Failed to lookup group %s\n", IV_GRP_NAME);
@@ -1258,6 +1263,8 @@ int main(int argc, char **argv)
 		rc = crt_group_config_remove(NULL);
 		assert(rc == 0);
 	}
+
+	crt_swim_fini();
 
 	rc = crt_finalize();
 	assert(rc == 0);

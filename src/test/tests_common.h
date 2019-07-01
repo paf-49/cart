@@ -58,6 +58,8 @@ tc_load_group_from_file(const char *grp_cfg_file,
 	if (!f) {
 		D_ERROR("Failed to open %s for reading\n", grp_cfg_file);
 		D_GOTO(out, rc = DER_NONEXIST);
+	} else {
+		D_DEBUG(DB_TEST, "Opened %s for reading\n", grp_cfg_file);
 	}
 
 	while (1) {

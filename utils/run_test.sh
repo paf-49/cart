@@ -67,7 +67,8 @@ JENKINS_TEST_LIST=(scripts/cart_echo_test.yml                   \
                    scripts/cart_test_no_pmix.yml                \
                    scripts/cart_test_no_pmix_multi_ctx.yml      \
                    scripts/cart_test_no_pmix_launcher.yml       \
-                   scripts/cart_test_no_timeout_non_sep.yml)
+                   scripts/cart_test_no_timeout_non_sep.yml     \
+                   scripts/cart_test_multi_prov.yml)
 
 # Check for symbol names in the library.
 if [ -d "utils" ]; then

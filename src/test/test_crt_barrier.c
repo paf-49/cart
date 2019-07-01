@@ -43,6 +43,7 @@
 #include "common.h"
 
 #define NUM_BARRIERS 20
+#define DEFAULT_PROGRESS_CTX_IDX	0
 
 static int g_barrier_count;
 static int g_shutdown;
@@ -134,6 +135,9 @@ int main(int argc, char **argv)
 	rc = crt_init("crt_barrier_group", CRT_FLAG_BIT_SERVER);
 	D_ASSERTF(rc == 0, "Failed in crt_init, rc = %d\n", rc);
 
+	rc = crt_swim_init(DEFAULT_PROGRESS_CTX_IDX);
+	D_ASSERTF(rc == DER_SUCCESS, "crt_swim_init() failed rc: %d.\n", rc);
+
 	printf("Calling crt_context_create()\n");
 	rc = crt_context_create(&crt_ctx);
 	D_ASSERTF(rc == 0, "Failed in crt_context_create, rc = %d\n", rc);
@@ -175,6 +179,8 @@ int main(int argc, char **argv)
 	pthread_join(tid, &check_ret);
 	D_ASSERTF(check_ret == NULL, "Progress thread failed\n");
 	crt_context_destroy(crt_ctx, 0);
+
+	crt_swim_fini();
 	rc = crt_finalize();
 	D_ASSERTF(rc == 0, "Failed in crt_finalize, rc = %d\n", rc);
 

@@ -1,4 +1,4 @@
-/* Copyright (C) 2016-2019 Intel Corporation
+/* Copyright (C) 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,7 +35,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * This is a simple example of cart rpc group test based on crt API.
+ * This is a cart multi provider test based on crt API.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,14 +48,32 @@
 #include <gurt/common.h>
 #include <gurt/fault_inject.h>
 #include <cart/api.h>
-#include "crt_fake_events.h"
 #include "test_group_rpc.h"
+#include "tests_common.h"
 
-#define TEST_CTX_MAX_NUM	 (72)
-
-#define TEST_GROUP_BASE			0x010000000
-#define TEST_GROUP_VER			0
+#define TEST_MULTI_PROV_BASE		0x010000000
+#define TEST_MULTI_PROV_VER		0
+#define TEST_CTX_MAX_NUM		(72)
 #define DEFAULT_PROGRESS_CTX_IDX	0
+#define NUM_SERVER_CTX_PSM2		(1)
+
+#define NUM_SERVER_CTX 4
+
+#define DBG_PRINT(x...)							\
+	do {								\
+		if (test_g.t_is_service)				\
+			fprintf(stderr, "SRV [rank=%d pid=%d]\t",	\
+			test_g.t_my_rank,					\
+			test_g.t_my_pid);					\
+		else							\
+			fprintf(stderr, "CLI [rank=%d pid=%d]\t",	\
+			test_g.t_my_rank,					\
+			test_g.t_my_pid);					\
+		fprintf(stderr, x);					\
+	} while (0)
+
+#define YULU_DEBUG \
+	DBG_PRINT("on line %s:%s:%d\n", __FILE__, __func__, __LINE__);
 
 
 struct test_t {
@@ -63,17 +81,20 @@ struct test_t {
 	crt_group_t	*t_remote_group;
 	char		*t_local_group_name;
 	char		*t_remote_group_name;
+	uint32_t	 t_local_group_size;
 	uint32_t	 t_remote_group_size;
 	d_rank_t	 t_my_rank;
+	int32_t		 t_my_pid;
+	char		*t_grp_cfg;
 	uint32_t	 t_should_attach:1,
-			 t_shutdown:1,
-			 t_complete:1;
+			 t_shutdown:1;
 	int		 t_is_service;
 	int		 t_infinite_loop;
 	int		 t_hold;
 	int		 t_shut_only;
 	uint32_t	 t_hold_time;
 	unsigned int	 t_ctx_num;
+	unsigned int	 t_ctx_num_psm2;
 	crt_context_t	 t_crt_ctx[TEST_CTX_MAX_NUM];
 	int		 t_thread_id[TEST_CTX_MAX_NUM]; /* logical tid */
 	pthread_t	 t_tid[TEST_CTX_MAX_NUM];
@@ -83,8 +104,21 @@ struct test_t {
 	struct d_fault_attr_t	 *t_fault_attr_5000;
 };
 
-struct test_t test_g = { .t_hold_time = 0, .t_ctx_num = 1, .t_roomno = 1082 };
+struct test_t test_g = {
+	.t_shutdown = 0,
+	.t_hold_time = 0,
+	.t_ctx_num = 1,
+	.t_ctx_num_psm2 = 2,
+	.t_roomno = 1082
+};
 
+int
+load_group_from_file(const char *grp_cfg_file, crt_group_t *grp,
+		int num_contexts,
+		d_rank_t my_rank, bool delete_file)
+{
+	return 0;
+};
 static inline void
 test_sem_timedwait(sem_t *sem, int sec, int line_number)
 {
@@ -106,14 +140,16 @@ test_checkin_handler(crt_rpc_t *rpc_req)
 	struct test_ping_check_in	*e_req;
 	struct test_ping_check_out	*e_reply;
 	int				 rc = 0;
+	int				 ctx_id = -1;
 
 	/* CaRT internally already allocated the input/output buffer */
 	e_req = crt_req_get(rpc_req);
 	D_ASSERTF(e_req != NULL, "crt_req_get() failed. e_req: %p\n", e_req);
 
-	printf("tier1 test_server recv'd checkin, opc: %#x.\n",
-	       rpc_req->cr_opc);
-	printf("tier1 checkin input - age: %d, name: %s, days: %d, "
+	crt_context_idx(rpc_req->cr_ctx, &ctx_id);
+	DBG_PRINT("tier1 test_server epid: %d recv'd checkin, opc: %#x.\n",
+	       ctx_id, rpc_req->cr_opc);
+	DBG_PRINT("tier1 checkin input - age: %d, name: %s, days: %d, "
 	       "bool_val %d.\n",
 	       e_req->age, e_req->name, e_req->days, e_req->bool_val);
 
@@ -133,7 +169,7 @@ test_checkin_handler(crt_rpc_t *rpc_req)
 	rc = crt_reply_send(rpc_req);
 	D_ASSERTF(rc == 0, "crt_reply_send() failed. rc: %d\n", rc);
 
-	printf("tier1 test_srver sent checkin reply, ret: %d, room_no: %d.\n",
+	DBG_PRINT("tier1 test_srver sent checkin reply, ret: %d, room_no: %d.\n",
 	       e_reply->ret, e_reply->room_no);
 }
 
@@ -148,9 +184,9 @@ test_ping_delay_handler(crt_rpc_t *rpc_req)
 	p_req = crt_req_get(rpc_req);
 	D_ASSERTF(p_req != NULL, "crt_req_get() failed. p_req: %p\n", p_req);
 
-	printf("tier1 test_server recv'd checkin, opc: %#x.\n",
+	DBG_PRINT("tier1 test_server recv'd checkin, opc: %#x.\n",
 	       rpc_req->cr_opc);
-	printf("tier1 checkin input - age: %d, name: %s, days: %d, "
+	DBG_PRINT("tier1 checkin input - age: %d, name: %s, days: %d, "
 	       "delay: %u.\n",
 	       p_req->age, p_req->name, p_req->days, p_req->delay);
 
@@ -165,7 +201,7 @@ test_ping_delay_handler(crt_rpc_t *rpc_req)
 	rc = crt_reply_send(rpc_req);
 	D_ASSERTF(rc == 0, "crt_reply_send() failed. rc: %d\n", rc);
 
-	printf("tier1 test_srver sent checkin reply, ret: %d, room_no: %d.\n",
+	DBG_PRINT("tier1 test_srver sent checkin reply, ret: %d, room_no: %d.\n",
 	       p_reply->ret, p_reply->room_no);
 }
 
@@ -195,7 +231,7 @@ client_cb_common(const struct crt_cb_info *cb_info)
 			D_FREE(rpc_req_input->name);
 			break;
 		}
-		printf("%s checkin result - ret: %d, room_no: %d, "
+		DBG_PRINT("%s checkin result - ret: %d, room_no: %d, "
 		       "bool_val %d.\n",
 		       rpc_req_input->name, rpc_req_output->ret,
 		       rpc_req_output->room_no, rpc_req_output->bool_val);
@@ -204,7 +240,7 @@ client_cb_common(const struct crt_cb_info *cb_info)
 		D_ASSERT(rpc_req_output->bool_val == true);
 		break;
 	case TEST_OPC_SHUTDOWN:
-		test_g.t_complete = 1;
+		test_g.t_shutdown = 1;
 		sem_post(&test_g.t_token_to_proceed);
 		break;
 	default:
@@ -212,7 +248,8 @@ client_cb_common(const struct crt_cb_info *cb_info)
 	}
 }
 
-static void *progress_thread(void *arg)
+static void *
+progress_func(void *arg)
 {
 	crt_context_t	ctx;
 	pthread_t	current_thread = pthread_self();
@@ -226,40 +263,39 @@ static void *progress_thread(void *arg)
 	CPU_SET(t_idx % num_cores, &cpuset);
 	pthread_setaffinity_np(current_thread, sizeof(cpu_set_t), &cpuset);
 
-	fprintf(stderr, "progress thread %d running on core %d...\n",
+	DBG_PRINT("progress thread %d running on core %d...\n",
 		t_idx, sched_getcpu());
 
 	ctx = (crt_context_t)test_g.t_crt_ctx[t_idx];
 	/* progress loop */
-	do {
+	while (1) {
 		rc = crt_progress(ctx, 0, NULL, NULL);
-		if (rc != 0 && rc != -DER_TIMEDOUT) {
+		if (rc != 0 && rc != -DER_TIMEDOUT)
 			D_ERROR("crt_progress failed rc: %d.\n", rc);
-		}
-		if (test_g.t_shutdown == 1 && test_g.t_complete == 1)
+		if (test_g.t_shutdown == 1)
 			break;
-	} while (!dead);
+	}
 
-	printf("progress_thread: rc: %d, test_srv.do_shutdown: %d.\n",
-	       rc, test_g.t_shutdown);
-	printf("progress_thread: progress thread exit ...\n");
+	DBG_PRINT("%s: rc: %d, test_srv.do_shutdown: %d.\n", __func__, rc,
+	       test_g.t_shutdown);
+	DBG_PRINT("%s: progress thread exit ...\n", __func__);
 
-	pthread_exit(NULL);
+	return NULL;
 }
 
 void test_shutdown_handler(crt_rpc_t *rpc_req)
 {
-	printf("tier1 test_srver received shutdown request, opc: %#x.\n",
+	DBG_PRINT("tier1 test_srver received shutdown request, opc: %#x.\n",
 	       rpc_req->cr_opc);
 
 	D_ASSERTF(rpc_req->cr_input == NULL, "RPC request has invalid input\n");
 	D_ASSERTF(rpc_req->cr_output == NULL, "RPC request output is NULL\n");
 
 	test_g.t_shutdown = 1;
-	printf("tier1 test_srver set shutdown flag.\n");
+	DBG_PRINT("tier1 test_srver set shutdown flag.\n");
 }
 
-static struct crt_proto_rpc_format my_proto_rpc_fmt_test_group1[] = {
+static struct crt_proto_rpc_format my_proto_rpc_fmt_test_multi_prov[] = {
 	{
 		.prf_flags	= 0,
 		.prf_req_fmt	= &CQF_test_ping_check,
@@ -278,45 +314,27 @@ static struct crt_proto_rpc_format my_proto_rpc_fmt_test_group1[] = {
 	}
 };
 
-static struct crt_proto_format my_proto_fmt_test_group1 = {
-	.cpf_name = "my-proto-test-group1",
-	.cpf_ver = TEST_GROUP_VER,
-	.cpf_count = ARRAY_SIZE(my_proto_rpc_fmt_test_group1),
-	.cpf_prf = &my_proto_rpc_fmt_test_group1[0],
-	.cpf_base = TEST_GROUP_BASE,
-};
-
-static struct crt_proto_rpc_format my_proto_rpc_fmt_test_group2[] = {
-	{
-		.prf_flags	= 0,
-		.prf_req_fmt	= &CQF_test_ping_check,
-		.prf_hdlr	= test_checkin_handler,
-		.prf_co_ops	= NULL,
-	}, {
-		.prf_flags	= CRT_RPC_FEAT_NO_REPLY,
-		.prf_req_fmt	= NULL,
-		.prf_hdlr	= test_shutdown_handler,
-		.prf_co_ops	= NULL,
-	}
-};
-
-static struct crt_proto_format my_proto_fmt_test_group2 = {
-	.cpf_name = "my-proto-test-group2",
-	.cpf_ver = TEST_GROUP_VER,
-	.cpf_count = ARRAY_SIZE(my_proto_rpc_fmt_test_group2),
-	.cpf_prf = &my_proto_rpc_fmt_test_group2[0],
-	.cpf_base = TEST_GROUP_BASE,
+static struct crt_proto_format my_proto_fmt_test_multi_prov = {
+	.cpf_name = "my-proto-test-multi-prov",
+	.cpf_ver = TEST_MULTI_PROV_VER,
+	.cpf_count = ARRAY_SIZE(my_proto_rpc_fmt_test_multi_prov),
+	.cpf_prf = &my_proto_rpc_fmt_test_multi_prov[0],
+	.cpf_base = TEST_MULTI_PROV_BASE,
 };
 
 void
 test_init(void)
 {
-	uint32_t	flag;
-	int		i;
-	int		rc = 0;
+	uint32_t		 flag;
+	int			 i;
+	char			*env_self_rank;
+	crt_ctx_init_opt_t	 ctx_opt;
+	char			*my_uri;
+	char			*grp_cfg_file;
+	int			 rc = 0;
 
-	fprintf(stderr, "local group: %s remote group: %s\n",
-		test_g.t_local_group_name, test_g.t_remote_group_name);
+	DBG_PRINT("local group: %s\n",
+		test_g.t_local_group_name);
 
 	/* In order to use things like D_ASSERTF, logging needs to be active
 	 * even if cart is not
@@ -324,190 +342,136 @@ test_init(void)
 	rc = d_log_init();
 	D_ASSERT(rc == 0);
 
+	D_DEBUG(DB_TEST, "starting multi-prov test\n");
 	rc = sem_init(&test_g.t_token_to_proceed, 0, 0);
 	D_ASSERTF(rc == 0, "sem_init() failed.\n");
 
-	flag = test_g.t_is_service ? CRT_FLAG_BIT_SERVER : 0;
-	if (test_g.t_shut_only)
-		flag |= CRT_FLAG_BIT_SINGLETON;
+	flag = CRT_FLAG_BIT_SERVER |
+		CRT_FLAG_BIT_PMIX_DISABLE | CRT_FLAG_BIT_LM_DISABLE;
+	// crt_init() reads OIF_INTERFACE, PHY_ADDR, and OFI_PORT. Currently
+	// these ENVs are the only way to control crt_init()
 	rc = crt_init(test_g.t_local_group_name, flag);
+
 	D_ASSERTF(rc == 0, "crt_init() failed, rc: %d\n", rc);
+
+
+	/* register RPCs */
+	rc = crt_proto_register(&my_proto_fmt_test_multi_prov);
+	D_ASSERTF(rc == 0, "crt_proto_register() failed. rc: %d\n", rc);
+	YULU_DEBUG;
+
+//	rc = crt_swim_init(DEFAULT_PROGRESS_CTX_IDX);
+//	D_ASSERTF(rc == DER_SUCCESS, "crt_swim_init() failed rc: %d.\n", rc);
 
 	test_g.t_fault_attr_1000 = d_fault_attr_lookup(1000);
 	test_g.t_fault_attr_5000 = d_fault_attr_lookup(5000);
 
-	rc = crt_group_rank(NULL, &test_g.t_my_rank);
-	D_ASSERTF(rc == 0, "crt_group_rank() failed. rc: %d\n", rc);
-	if (test_g.t_is_service) {
-		rc = crt_group_config_save(NULL, true);
-		D_ASSERTF(rc == 0, "crt_group_config_save() failed. rc: %d\n",
-			rc);
-		crt_fake_event_init(test_g.t_my_rank);
-		D_ASSERTF(rc == 0, "crt_fake_event_init() failed. rc: %d\n",
-			  rc);
+	///////////////////////////////
+	//load configs from file
+	env_self_rank = getenv("CRT_L_RANK");
+	test_g.t_my_rank = atoi(env_self_rank);
+	test_g.t_grp_cfg = getenv("CRT_L_GRP_CFG");
+
+	// step 1, retrieve local group handle
+	test_g.t_local_group = crt_group_lookup(NULL);
+	if (!test_g.t_local_group) {
+		D_ERROR("Failed to lookup group\n");
+		assert(0);
 	}
 
-	/* register RPCs */
-	if (test_g.t_is_service) {
-		rc = crt_proto_register(&my_proto_fmt_test_group1);
-		D_ASSERTF(rc == 0, "crt_proto_register() failed. rc: %d\n",
-			rc);
-	} else {
-		rc = crt_proto_register(&my_proto_fmt_test_group2);
-		D_ASSERTF(rc == 0, "crt_proto_register() failed. rc: %d\n",
-			rc);
-	}
-
+	// create sockets contexts
+	// step 2, create context 0
 	for (i = 0; i < test_g.t_ctx_num; i++) {
-		test_g.t_thread_id[i] = i;
 		rc = crt_context_create(&test_g.t_crt_ctx[i]);
 		D_ASSERTF(rc == 0, "crt_context_create() failed. rc: %d\n", rc);
-		rc = pthread_create(&test_g.t_tid[i], NULL, progress_thread,
+		test_g.t_thread_id[i] = i;
+		rc = pthread_create(&test_g.t_tid[i], NULL, progress_func,
 				    &test_g.t_thread_id[i]);
 		D_ASSERTF(rc == 0, "pthread_create() failed. rc: %d\n", rc);
 	}
-	test_g.t_complete = 1;
-}
-
-void
-check_in(crt_group_t *remote_group, int rank)
-{
-	crt_rpc_t			*rpc_req = NULL;
-	struct test_ping_check_in	*rpc_req_input;
-	crt_endpoint_t			 server_ep = {0};
-	char				*buffer;
-	int				 rc;
-
-	server_ep.ep_grp = remote_group;
-	server_ep.ep_rank = rank;
-	rc = crt_req_create(test_g.t_crt_ctx[0], &server_ep,
-			TEST_OPC_CHECKIN, &rpc_req);
-	D_ASSERTF(rc == 0 && rpc_req != NULL, "crt_req_create() failed,"
-			" rc: %d rpc_req: %p\n", rc, rpc_req);
-
-	rpc_req_input = crt_req_get(rpc_req);
-	D_ASSERTF(rpc_req_input != NULL, "crt_req_get() failed."
-			" rpc_req_input: %p\n", rpc_req_input);
-
-	/**
-	 * example to inject faults to D_ALLOC. To turn it on, edit the fault
-	 * config file: under fault id 1000, change the probability from 0 to
-	 * anything in [1, 100]
-	 */
-	if (D_SHOULD_FAIL(test_g.t_fault_attr_1000)) {
-		buffer = NULL;
-	} else {
-		D_ALLOC(buffer, 256);
-		D_INFO("not injecting fault.\n");
+	// assign local rank
+	// step 3,
+	rc = crt_rank_self_set(test_g.t_my_rank);
+	if (rc != 0) {
+		D_ERROR("crt_rank_self_set(%d) failed; rc=%d\n",
+			test_g.t_my_rank, rc);
+		assert(0);
 	}
 
-	D_ASSERTF(buffer != NULL, "Cannot allocate memory.\n");
-	snprintf(buffer,  256, "Guest %d", test_g.t_my_rank);
-	rpc_req_input->name = buffer;
-	rpc_req_input->age = 21;
-	rpc_req_input->days = 7;
-	rpc_req_input->bool_val = true;
-	D_DEBUG(DB_TEST, "client(rank %d) sending checkin rpc with tag "
-		"%d, name: %s, age: %d, days: %d, bool_val %d.\n",
-		test_g.t_my_rank, server_ep.ep_tag, rpc_req_input->name,
-		rpc_req_input->age, rpc_req_input->days,
-		rpc_req_input->bool_val);
+	// retrive self rank as a sanity check
+	// setp 4
+	rc = crt_rank_uri_get(test_g.t_local_group, test_g.t_my_rank,
+			CRT_NA_OFI_SOCKETS, 0,
+			&my_uri);
+	if (rc != 0) {
+		D_ERROR("crt_rank_uri_get() failed; rc=%d\n", rc);
+		assert(0);
+	}
 
-	/* send an rpc, print out reply */
-	rc = crt_req_send(rpc_req, client_cb_common, NULL);
-	D_ASSERTF(rc == 0, "crt_req_send() failed. rc: %d\n", rc);
+	/* load group info from a config file, create contexts, populate peer
+	 * rank URIs based on config file.  and delete file upon return if so
+	 * requested
+	 */
+	// this func should return a base URI string to use with crt_init() or
+	// crt_context_create().
+	grp_cfg_file = getenv("CRT_L_GRP_CFG");
+	rc = tc_load_group_from_file(grp_cfg_file, test_g.t_crt_ctx[0],
+			test_g.t_local_group, test_g.t_my_rank,
+			false);
+	if (rc != 0) {
+		D_ERROR("tc_load_group_from_file() failed; rc=%d\n", rc);
+		assert(0);
+	}
+
+	DBG_PRINT("self_rank=%d uri=%s grp_cfg_file=%s\n", test_g.t_my_rank,
+			my_uri, grp_cfg_file);
+	D_FREE(my_uri);
+
+	rc = crt_group_size(NULL, &test_g.t_local_group_size);
+	if (rc != 0) {
+		D_ERROR("crt_group_size() failed; rc=%d\n", rc);
+		assert(0);
+	}
+	///////////////////////////////
+	// create psm2 contexts
+	// the file needs to contain the port number and the URI
+	load_group_from_file(grp_cfg_file, test_g.t_local_group,
+			NUM_SERVER_CTX_PSM2, test_g.t_my_rank, true);
+	for (i = 0; i < test_g.t_ctx_num_psm2; i++) {
+		int j = i + test_g.t_ctx_num;
+		ctx_opt.ccio_ni = "ib0";
+		ctx_opt.ccio_na = "ofi+psm2";
+		ctx_opt.ccio_port = 25125;
+		ctx_opt.ccio_share_na = 0;
+		ctx_opt.ccio_ctx_max_num = 1;
+		test_g.t_thread_id[j] = j;
+		rc = crt_context_create_opt(&test_g.t_crt_ctx[j], &ctx_opt);
+		D_ASSERTF(rc == 0, "crt_context_create_opt() failed. rc: %d\n", rc);
+		rc = pthread_create(&test_g.t_tid[j], NULL, progress_func,
+				    &test_g.t_thread_id[j]);
+		D_ASSERTF(rc == 0, "pthread_create() failed. rc: %d\n", rc);
+	}
+
+	crt_group_config_save_v2(test_g.t_local_group, "eth0", "ofi+sockets");
+	crt_group_config_save_v2(test_g.t_local_group, "ib0", "ofi+psm2");
 }
 
 void
 test_run(void)
 {
-	crt_group_t			*remote_group = NULL;
-	int				 ii;
-	int				 rc;
-
-	if (!test_g.t_should_attach)
-		return;
-
-	if (test_g.t_is_service) {
-		rc = crt_init(test_g.t_local_group_name, 0);
-		D_ASSERTF(rc == 0, "crt_init() failed. rc: %d\n", rc);
-		rc = crt_swim_init(DEFAULT_PROGRESS_CTX_IDX);
-		D_ASSERTF(rc == DER_SUCCESS,
-			  "crt_swim_init() failed rc: %d.\n", rc);
-	}
-
-	/* try until success to avoid intermittent failures under valgrind. */
-	do {
-		sleep(1);
-		rc = crt_group_attach(test_g.t_remote_group_name,
-				      &test_g.t_remote_group);
-	} while (rc != 0);
-	D_ASSERTF(rc == 0, "crt_group_attach failed, rc: %d\n", rc);
-	D_ASSERTF(test_g.t_remote_group != NULL, "NULL attached srv_grp\n");
-
-	test_g.t_complete = 0;
-	remote_group = crt_group_lookup(test_g.t_remote_group_name);
-	D_ASSERTF(remote_group != NULL, "crt_group_lookup() failed. "
-		  "remote_group = %p\n", remote_group);
-	crt_group_size(remote_group, &test_g.t_remote_group_size);
-	fprintf(stderr, "size of %s is %d\n", test_g.t_remote_group_name,
-		test_g.t_remote_group_size);
-
-	/* send shutdown to the target group, don't run any test */
-	if (test_g.t_shut_only)
-		return;
-	for (ii = 0; ii < test_g.t_remote_group_size; ii++)
-		check_in(test_g.t_remote_group, ii);
-
-	for (ii = 0; ii < test_g.t_remote_group_size; ii++)
-		test_sem_timedwait(&test_g.t_token_to_proceed, 61, __LINE__);
-
-	while (test_g.t_infinite_loop) {
-		check_in(test_g.t_remote_group, 1);
-		test_sem_timedwait(&test_g.t_token_to_proceed, 61, __LINE__);
-	}
+	return;
 }
 
 void
 test_fini()
 {
 	int				 ii;
-	crt_endpoint_t			 server_ep = {0};
-	crt_rpc_t			*rpc_req = NULL;
 	int				 rc = 0;
-
-	if (test_g.t_should_attach && test_g.t_my_rank == 0) {
-		/* client rank 0 tells all servers to shut down */
-		for (ii = 0; ii < test_g.t_remote_group_size; ii++) {
-			server_ep.ep_grp = test_g.t_remote_group;
-			server_ep.ep_rank = ii;
-			rc = crt_req_create(test_g.t_crt_ctx[0], &server_ep,
-				CRT_PROTO_OPC(TEST_GROUP_BASE,
-				TEST_GROUP_VER, 1), &rpc_req);
-			D_ASSERTF(rc == 0 && rpc_req != NULL,
-				  "crt_req_create() failed. "
-				  "rc: %d, rpc_req: %p\n", rc, rpc_req);
-			rc = crt_req_send(rpc_req, client_cb_common, NULL);
-			D_ASSERTF(rc == 0, "crt_req_send() failed. rc: %d\n",
-				  rc);
-
-			test_sem_timedwait(&test_g.t_token_to_proceed, 61,
-					   __LINE__);
-		}
-	}
-	if (test_g.t_should_attach) {
-		rc = crt_group_detach(test_g.t_remote_group);
-		D_ASSERTF(rc == 0, "crt_group_detach failed, rc: %d\n", rc);
-	}
-	if (test_g.t_is_service)
-		crt_swim_fini();
-	else
-		test_g.t_shutdown = 1;
 
 	for (ii = 0; ii < test_g.t_ctx_num; ii++) {
 		rc = pthread_join(test_g.t_tid[ii], NULL);
 		if (rc != 0)
-			fprintf(stderr, "pthread_join failed. rc: %d\n", rc);
+			DBG_PRINT("pthread_join failed. rc: %d\n", rc);
 		D_DEBUG(DB_TEST, "joined progress thread.\n");
 
 		/* try to flush indefinitely */
@@ -518,22 +482,37 @@ test_fini()
 		rc = crt_context_destroy(test_g.t_crt_ctx[ii], 0);
 		D_ASSERTF(rc == 0, "crt_context_destroy() failed. rc: %d\n",
 			  rc);
-		D_DEBUG(DB_TEST, "destroyed crt_ctx.\n");
+		D_DEBUG(DB_TEST, "destroyed crt_ctx. id %d\n", ii);
+	}
+	// do the same for psm2
+	for (ii = 0; ii < test_g.t_ctx_num_psm2; ii++) {
+		int jj = ii + test_g.t_ctx_num;
+		rc = pthread_join(test_g.t_tid[jj], NULL);
+		if (rc != 0)
+			DBG_PRINT("pthread_join failed. rc: %d\n", rc);
+		D_DEBUG(DB_TEST, "joined progress thread.\n");
+
+		/* try to flush indefinitely */
+		rc = crt_context_flush(test_g.t_crt_ctx[jj], 0);
+		D_ASSERTF(rc == 0 || rc == -DER_TIMEDOUT,
+			  "crt_context_flush() failed. rc: %d\n", rc);
+
+		rc = crt_context_destroy(test_g.t_crt_ctx[jj], 0);
+		D_ASSERTF(rc == 0, "crt_context_destroy() failed. rc: %d\n",
+			  rc);
+		D_DEBUG(DB_TEST, "destroyed crt_ctx. id %d\n", jj);
 	}
 
-	if (test_g.t_is_service)
-		crt_fake_event_fini(test_g.t_my_rank);
 	rc = sem_destroy(&test_g.t_token_to_proceed);
 	D_ASSERTF(rc == 0, "sem_destroy() failed.\n");
-	/* corresponding to the crt_init() in run_test_group() */
-	if (test_g.t_should_attach && test_g.t_is_service) {
-		rc = crt_finalize();
-		D_ASSERTF(rc == 0, "crt_finalize() failed. rc: %d\n", rc);
-	}
-	if (test_g.t_is_service && test_g.t_my_rank == 0) {
-		rc = crt_group_config_remove(NULL);
-		assert(rc == 0);
-	}
+//	if (test_g.t_is_service && test_g.t_my_rank == 0) {
+//		rc = crt_group_config_remove(NULL);
+//		assert(rc == 0);
+//	}
+
+//	if (test_g.t_is_service) {
+//		crt_swim_fini();
+//	}
 
 	rc = crt_finalize();
 	D_ASSERTF(rc == 0, "crt_finalize() failed. rc: %d\n", rc);
@@ -543,7 +522,7 @@ test_fini()
 	D_DEBUG(DB_TEST, "exiting.\n");
 }
 
-int
+static int
 test_parse_args(int argc, char **argv)
 {
 	int				option_index = 0;
@@ -560,50 +539,70 @@ test_parse_args(int argc, char **argv)
 		{0, 0, 0, 0}
 	};
 
+	DBG_PRINT("srv: optind %d argc %d\n", optind, argc);
+	YULU_DEBUG;
 	while (1) {
 		rc = getopt_long(argc, argv, "n:a:c:h:", long_options,
 				 &option_index);
-		if (rc == -1)
+		if (rc == -1) {
+			DBG_PRINT("src: optind %d argc %d\n", optind, argc);
+			YULU_DEBUG;
 			break;
+		}
 		switch (rc) {
 		case 0:
+			YULU_DEBUG;
 			if (long_options[option_index].flag != 0)
 				break;
 		case 'n':
+			DBG_PRINT("srv: optind %d argc %d, arg %s\n", optind, argc, optarg);
+			YULU_DEBUG;
 			test_g.t_local_group_name = optarg;
 			break;
 		case 'a':
+			DBG_PRINT("srv: optind %d argc %d, arg %s\n", optind, argc, optarg);
+			YULU_DEBUG;
 			test_g.t_remote_group_name = optarg;
 			test_g.t_should_attach = 1;
 			break;
 		case 'c': {
+			DBG_PRINT("srv: optind %d argc %d, arg %s\n", optind, argc, optarg);
+			YULU_DEBUG;
 			unsigned int	nr;
 			char		*end;
 
 			nr = strtoul(optarg, &end, 10);
 			if (end == optarg || nr == 0 || nr > TEST_CTX_MAX_NUM) {
-				fprintf(stderr, "invalid ctx_num %d exceed "
+				DBG_PRINT("invalid ctx_num %d exceed "
 					"[%d, %d], using 1 for test.\n", nr,
 					1, TEST_CTX_MAX_NUM);
 			} else {
 				test_g.t_ctx_num = nr;
-				fprintf(stderr, "will create %d contexts.\n",
+				DBG_PRINT("srv: will create %d contexts.\n",
 					nr);
 			}
 			break;
 		}
 		case 'h':
+			DBG_PRINT("srv: optind %d argc %d, arg %s\n", optind, argc, optarg);
+			YULU_DEBUG;
 			test_g.t_hold = 1;
 			test_g.t_hold_time = atoi(optarg);
 			break;
 		case '?':
+			DBG_PRINT("srv: optind %d argc %d\n", optind, argc);
+			YULU_DEBUG;
 			return 1;
 		default:
+			DBG_PRINT("src: optind %d argc %d\n", optind, argc);
+			YULU_DEBUG;
 			return 1;
 		}
 	}
 	if (optind < argc) {
-		fprintf(stderr, "non-option argv elements encountered");
+		DBG_PRINT("srv: non-option argv elements encountered.\n");
+		DBG_PRINT("srv: optind %d argc %d\n", optind, argc);
+		YULU_DEBUG;
 		return 1;
 	}
 
@@ -614,9 +613,11 @@ int main(int argc, char **argv)
 {
 	int	rc;
 
+	test_g.t_is_service = 1;
+
 	rc = test_parse_args(argc, argv);
 	if (rc != 0) {
-		fprintf(stderr, "test_parse_args() failed, rc: %d.\n",
+		DBG_PRINT("test_parse_args() failed, rc: %d.\n",
 			rc);
 		return rc;
 	}
@@ -625,6 +626,8 @@ int main(int argc, char **argv)
 	test_run();
 	if (test_g.t_hold)
 		sleep(test_g.t_hold_time);
+
+	test_g.t_shutdown = 1;
 	test_fini();
 
 	return rc;

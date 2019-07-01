@@ -76,6 +76,7 @@ int main(int argc, char **argv)
 	d_rank_t		my_rank;
 	char			*grp_cfg_file;
 	uint32_t		grp_size;
+	int			na_type;
 	int			rc;
 
 	env_self_rank = getenv("CRT_L_RANK");
@@ -90,7 +91,11 @@ int main(int argc, char **argv)
 	assert(rc == 0);
 
 	DBG_PRINT("Server starting up\n");
-	rc = crt_init("server_grp", CRT_FLAG_BIT_SERVER |
+	/**
+	 * need to load URIs from file, then call crt_init_opt. Otherwise this
+	 * test is not using the predefined URIs.
+	 */
+	rc = crt_init(NULL, CRT_FLAG_BIT_SERVER |
 		CRT_FLAG_BIT_PMIX_DISABLE | CRT_FLAG_BIT_LM_DISABLE);
 	if (rc != 0) {
 		D_ERROR("crt_init() failed; rc=%d\n", rc);
@@ -130,7 +135,9 @@ int main(int argc, char **argv)
 		assert(0);
 	}
 
-	rc = crt_rank_uri_get(grp, my_rank, 0, &my_uri);
+	na_type = crt_context_na_type(crt_ctx[0]);
+
+	rc = crt_rank_uri_get(grp, my_rank, na_type, 0, &my_uri);
 	if (rc != 0) {
 		D_ERROR("crt_rank_uri_get() failed; rc=%d\n", rc);
 		assert(0);

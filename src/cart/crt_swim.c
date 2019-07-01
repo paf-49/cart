@@ -132,7 +132,7 @@ static int crt_swim_send_message(struct swim_context *ctx, swim_id_t to,
 	int			 rc;
 
 	D_RWLOCK_RDLOCK(&csm->csm_rwlock);
-	crt_ctx = crt_context_lookup(csm->csm_crt_ctx_idx);
+	crt_ctx = crt_context_lookup(crt_gdata.cg_na_plugin, csm->csm_crt_ctx_idx);
 	if (crt_ctx == CRT_CONTEXT_NULL) {
 		D_RWLOCK_UNLOCK(&csm->csm_rwlock);
 		D_ERROR("crt_context_lookup failed\n");
@@ -400,6 +400,13 @@ cleanup:
 	csm->csm_crt_ctx_idx = -1;
 out:
 	return rc;
+}
+
+bool
+crt_swim_enabled(struct crt_grp_priv *grp_priv)
+{
+	struct crt_swim_membs	*csm = &grp_priv->gp_membs_swim;
+	return csm->csm_ctx != NULL;
 }
 
 int crt_swim_enable(struct crt_grp_priv *grp_priv, int crt_ctx_idx)

@@ -64,6 +64,9 @@ test_init()
 	rc = crt_init_opt(test.tg_local_group_name, flag, &opt);
 	D_ASSERTF(rc == 0, "crt_init() failed, rc: %d\n", rc);
 
+	rc = crt_swim_init(DEFAULT_PROGRESS_CTX_IDX);
+	D_ASSERTF(rc == DER_SUCCESS, "crt_swim_init() failed rc: %d.\n", rc);
+
 	rc = crt_group_rank(NULL, &test.tg_my_rank);
 	D_ASSERTF(rc == 0, "crt_group_rank() failed. rc: %d\n", rc);
 
@@ -107,6 +110,7 @@ test_fini()
 	rc = sem_destroy(&test.tg_token_to_proceed);
 	D_ASSERTF(rc == 0, "sem_destroy() failed.\n");
 
+	crt_swim_fini();
 	rc = crt_finalize();
 	D_ASSERTF(rc == 0, "crt_finalize() failed. rc: %d\n", rc);
 	D_DEBUG(DB_TRACE, "exiting.\n");

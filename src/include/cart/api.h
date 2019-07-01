@@ -125,6 +125,8 @@ crt_init(crt_group_id_t grpid, uint32_t flags)
 int
 crt_context_create(crt_context_t *crt_ctx);
 
+int
+crt_context_create_opt(crt_context_t *crt_ctx, crt_ctx_init_opt_t *opt);
 
 /**
  * Set the timeout value for all RPC requests created on the specified context.
@@ -227,6 +229,9 @@ crt_context_num(int *ctx_num);
  *       should make the call collectively, as now it will internally call
  *       PMIx_Fence.
  */
+
+int
+crt_context_na_type(crt_context_t crt_ctx);
 int
 crt_finalize(void);
 
@@ -1079,6 +1084,8 @@ crt_group_destroy(crt_group_t *grp, crt_grp_destroy_cb_t grp_destroy_cb,
  */
 int
 crt_group_attach(crt_group_id_t srv_grpid, crt_group_t **attached_grp);
+int
+crt_group_attach_v2(crt_group_id_t srv_grpid, crt_group_t **attached_grp);
 
 /**
  * Set an alternative directory to store/retrieve group attach info
@@ -1110,6 +1117,8 @@ crt_group_config_path_set(const char *path);
  */
 int
 crt_group_config_save(crt_group_t *grp, bool forall);
+int
+crt_group_config_save_v2(crt_group_t *grp, char *interface, char *prov);
 
 /**
  * Remove the attach info file for the sepcified group.
@@ -1771,7 +1780,7 @@ crt_rank_self_set(d_rank_t rank);
  *                              on failure.
  */
 int
-crt_rank_uri_get(crt_group_t *grp, d_rank_t rank, int tag, char **uri);
+crt_rank_uri_get(crt_group_t *grp, d_rank_t rank, int na_type, int tag, char **uri);
 
 /**
  * Get rank SWIM state.
@@ -1813,6 +1822,8 @@ crt_group_rank_remove(crt_group_t *group, d_rank_t rank);
  *                              on failure.
  */
 int crt_self_uri_get(int tag, char **uri);
+int
+crt_self_uri_get_na(int na_type, int tag, char **uri);
 
 
 /**
@@ -1854,6 +1865,9 @@ int crt_group_info_set(d_iov_t *grp_info);
  *                              on failure
  */
 int crt_group_ranks_get(crt_group_t *group, d_rank_list_t **list);
+
+int crt_swim_init(int crt_ctx_idx);
+void crt_swim_fini(void);
 
 /**
  * Create local group view and return a handle to a group.

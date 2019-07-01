@@ -55,6 +55,8 @@
 #define TEST_CORPC_BASE2 0x020000000
 #define TEST_CORPC_VER 0
 
+#define DEFAULT_PROGRESS_CTX_IDX	0
+
 #define TEST_OPC_SHUTDOWN CRT_PROTO_OPC(TEST_CORPC_BASE2,		\
 						TEST_CORPC_VER, 0)
 #define TEST_OPC_CORPC_VER_MISMATCH CRT_PROTO_OPC(TEST_CORPC_BASE1,	\
@@ -641,6 +643,11 @@ test_init(void)
 	rc = crt_init(test.t_local_group_name, flag);
 	D_ASSERTF(rc == 0, "crt_init() failed, rc: %d\n", rc);
 
+	if (test.t_is_service) {
+		rc = crt_swim_init(DEFAULT_PROGRESS_CTX_IDX);
+		D_ASSERTF(rc == DER_SUCCESS,
+			  "crt_swim_init() failed rc: %d.\n", rc);
+	}
 	test.t_local_group = crt_group_lookup(test.t_local_group_name);
 	D_ASSERTF(test.t_local_group != NULL, "crt_group_lookup() failed. "
 		  "local_group = %p\n", test.t_local_group);
@@ -705,6 +712,10 @@ test_fini()
 
 	rc = crt_context_destroy(test.t_crt_ctx, 0);
 	D_ASSERTF(rc == 0, "crt_context_destroy() failed. rc: %d\n", rc);
+
+
+	if (test.t_is_service)
+		crt_swim_fini();
 	rc = crt_finalize();
 	D_ASSERTF(rc == 0, "crt_finalize() failed. rc: %d\n", rc);
 

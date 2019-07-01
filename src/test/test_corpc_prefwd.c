@@ -53,6 +53,8 @@ static bool pre_forward_called;
 static bool hdlr_called;
 static int g_do_shutdown;
 
+#define DEFAULT_PROGRESS_CTX_IDX	0
+
 static int
 corpc_aggregate(crt_rpc_t *src, crt_rpc_t *result, void *priv)
 {
@@ -152,6 +154,9 @@ int main(void)
 	rc = crt_init(NULL, CRT_FLAG_BIT_SERVER);
 	assert(rc == 0);
 
+	rc = crt_swim_init(DEFAULT_PROGRESS_CTX_IDX);
+	D_ASSERTF(rc == DER_SUCCESS, "crt_swim_init() failed rc: %d.\n", rc);
+
 	rc = crt_group_config_save(NULL, true);
 	assert(rc == 0);
 
@@ -192,6 +197,7 @@ int main(void)
 		assert(rc == 0);
 	}
 
+	crt_swim_fini();
 	rc = crt_finalize();
 	assert(rc == 0);
 

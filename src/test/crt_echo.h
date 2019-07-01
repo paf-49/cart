@@ -65,6 +65,8 @@
 
 #define ECHO_2ND_TIER_GRPID	"echo_2nd_tier"
 
+#define DEFAULT_PROGRESS_CTX_IDX	0
+
 struct gecho {
 	crt_context_t	crt_ctx;
 	crt_context_t	*extra_ctx;
@@ -211,6 +213,13 @@ echo_init(int server, bool tier2)
 
 	assert(rc == 0);
 
+	if (server) {
+		rc = crt_swim_init(DEFAULT_PROGRESS_CTX_IDX);
+		D_ASSERTF(rc == DER_SUCCESS,
+			  "crt_swim_init() failed rc: %d.\n", rc);
+	}
+
+
 	rc = crt_context_create(&gecho.crt_ctx);
 	assert(rc == 0);
 
@@ -303,6 +312,9 @@ echo_fini(void)
 		rc = crt_group_detach(tier2_grp);
 		assert(rc == 0);
 	}
+
+	if (gecho.server)
+		crt_swim_fini();
 
 	rc = crt_context_destroy(gecho.crt_ctx, 0);
 	assert(rc == 0);

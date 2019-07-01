@@ -1,4 +1,4 @@
-/* Copyright (C) 2017-2018 Intel Corporation
+/* Copyright (C) 2017-2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -330,7 +330,7 @@ send_barrier_msg(struct crt_grp_priv *grp_priv, int b_num,
 	/* Context 0 is required and this condition is checked in
 	 * crt_barrier_create so assertion is fine.
 	 */
-	crt_ctx = crt_context_lookup(0);
+	crt_ctx = crt_context_lookup(crt_gdata.cg_na_plugin, 0);
 	D_ASSERT(crt_ctx != CRT_CONTEXT_NULL);
 	D_DEBUG(DB_TRACE, "Sending barrier message for %d (OPC=%d)\n",
 		b_num, opcode);
@@ -521,7 +521,7 @@ crt_barrier(crt_group_t *grp, crt_barrier_cb_t complete_cb, void *cb_arg)
 		return -DER_NO_PERM;
 	}
 
-	crt_ctx = crt_context_lookup(0);
+	crt_ctx = crt_context_lookup(crt_gdata.cg_na_plugin, 0);
 	if (crt_ctx == CRT_CONTEXT_NULL) {
 		D_ERROR("No context available for barrier\n");
 		return -DER_UNINIT;

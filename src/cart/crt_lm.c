@@ -967,7 +967,7 @@ lm_uri_lookup_psr(struct lm_grp_priv_t *lm_grp_priv,
 		D_GOTO(out, rc);
 	}
 
-	crt_ctx = crt_context_lookup(0);
+	crt_ctx = crt_context_lookup(crt_gdata.cg_na_plugin, 0);
 	if (crt_ctx == NULL) {
 		D_ERROR("crt_context 0 doesn't exist.\n");
 		D_GOTO(cleanup, rc = -DER_INVAL);

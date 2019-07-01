@@ -40,6 +40,22 @@
 #define TEST_OPC_SHUTDOWN	CRT_PROTO_OPC(0x010000000, 0, 1)
 
 
+#define CRT_ISEQ_TEST_PING_CHECK /* input fields */		 \
+	((uint32_t)		(age)			CRT_VAR) \
+	((uint32_t)		(days)			CRT_VAR) \
+	((d_string_t)		(name)			CRT_VAR) \
+	((bool)			(bool_val)		CRT_VAR)
+
+#define CRT_OSEQ_TEST_PING_CHECK /* output fields */		 \
+	((int32_t)		(ret)			CRT_VAR) \
+	((uint32_t)		(room_no)		CRT_VAR) \
+	((uint32_t)		(bool_val)		CRT_VAR)
+
+CRT_RPC_DECLARE(test_ping_check,
+		CRT_ISEQ_TEST_PING_CHECK, CRT_OSEQ_TEST_PING_CHECK)
+CRT_RPC_DEFINE(test_ping_check,
+		CRT_ISEQ_TEST_PING_CHECK, CRT_OSEQ_TEST_PING_CHECK)
+
 #define CRT_ISEQ_TEST_PING_DELAY /* input fields */		 \
 	((int32_t)		(age)			CRT_VAR) \
 	((int32_t)		(days)			CRT_VAR) \
