@@ -112,21 +112,6 @@ struct test_t test_g = {
 	.t_roomno = 1082
 };
 
-static inline void
-test_sem_timedwait(sem_t *sem, int sec, int line_number)
-{
-	struct timespec			deadline;
-	int				rc;
-
-	rc = clock_gettime(CLOCK_REALTIME, &deadline);
-	D_ASSERTF(rc == 0, "clock_gettime() failed at line %d rc: %d\n",
-		  line_number, rc);
-	deadline.tv_sec += sec;
-	rc = sem_timedwait(sem, &deadline);
-	D_ASSERTF(rc == 0, "sem_timedwait() failed at line %d rc: %d\n",
-		  line_number, rc);
-}
-
 void
 test_checkin_handler(crt_rpc_t *rpc_req)
 {
