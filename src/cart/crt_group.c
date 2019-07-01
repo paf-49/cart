@@ -812,7 +812,7 @@ crt_grp_lc_uri_insert_all(crt_group_t *grp, d_rank_t rank, int tag,
 
 	grp_priv = crt_grp_pub2priv(grp);
 
-	na_type = crt_uri_na_type(uri);
+	na_type = crt_uri_to_na_type(uri);
 	for (i = 0; i < CRT_SRV_CONTEXT_NUM; i++) {
 		rc = crt_grp_lc_uri_insert(grp_priv, na_type, i, rank, tag, uri);
 		if (rc != 0) {

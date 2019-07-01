@@ -439,8 +439,8 @@ test_init(void)
 			NUM_SERVER_CTX_PSM2, test_g.t_my_rank, true);
 	for (i = 0; i < test_g.t_ctx_num_psm2; i++) {
 		int j = i + test_g.t_ctx_num;
-		ctx_opt.ccio_ni = "ib0";
-		ctx_opt.ccio_na = "ofi+psm2";
+		ctx_opt.ccio_interface = "ib0";
+		ctx_opt.ccio_prov = "ofi+psm2";
 		ctx_opt.ccio_port = 25125;
 		ctx_opt.ccio_share_na = 0;
 		ctx_opt.ccio_ctx_max_num = 1;

@@ -449,11 +449,11 @@ out:
 		d_log_fini();
 	} else {
 		/* add ofi_conf to list */
-		crt_ctx_init_opt_t na_ofi_opt = {.ccio_na = "ofi+sockets"};
+		crt_ctx_init_opt_t na_ofi_opt = {.ccio_prov = "ofi+sockets"};
 
-		na_ofi_opt.ccio_ni = crt_na_ofi_conf.noc_interface;
+		na_ofi_opt.ccio_interface = crt_na_ofi_conf.noc_interface;
 		if (addr_env)
-			na_ofi_opt.ccio_na = addr_env;
+			na_ofi_opt.ccio_prov = addr_env;
 		na_ofi_opt.ccio_port = crt_na_ofi_conf.noc_port;
 		rc = crt_na_ofi_config_init_opt(&na_ofi_opt);
 		if (rc != DER_SUCCESS)
@@ -802,20 +802,20 @@ crt_na_ofi_config_init_opt(crt_ctx_init_opt_t *opt)
 	int na_type;
 	int		 rc = 0;
 
-	rc = crt_parse_na_type(&na_type, opt->ccio_na);
+	rc = crt_parse_na_type(&na_type, opt->ccio_prov);
 	if (rc != DER_SUCCESS) {
 		D_ERROR("crt_parse_na_type() failed, rc %d\n", rc);
 		return rc;
 	}
 	D_ASSERT(na_type == crt_na_dict[na_type].nad_type);
-	interface = opt->ccio_ni;
+	interface = opt->ccio_interface;
 	if (interface == NULL || strlen(interface) == 0) {
 		D_ERROR("ENV OFI_INTERFACE not set.");
 		return -DER_INVAL;
 	}
 
 	D_RWLOCK_WRLOCK(&crt_na_ofi_config_rwlock);
-	na_conf = crt_na_config_lookup(opt->ccio_ni, opt->ccio_na,
+	na_conf = crt_na_config_lookup(opt->ccio_interface, opt->ccio_prov,
 				       false /* need_lock */);
 	if (na_conf != NULL) {
 		D_DEBUG(DB_ALL, "interface already initialized.]n");
@@ -902,7 +902,7 @@ crt_na_ofi_config_init_opt(crt_ctx_init_opt_t *opt)
 	D_DEBUG(DB_ALL, "na_conf->noc_ip_str %s na_conf->noc_port %d\n",
 			na_conf->noc_ip_str, na_conf->noc_port);
 
-	D_STRNDUP(na_conf->noc_na_str, opt->ccio_na, 64);
+	D_STRNDUP(na_conf->noc_na_str, opt->ccio_prov, 64);
 	if (na_conf->noc_na_str == NULL)
 		D_GOTO(out, rc = -DER_NOMEM);
 

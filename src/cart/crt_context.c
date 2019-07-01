@@ -207,7 +207,7 @@ out:
 int
 crt_context_create(crt_context_t *crt_ctx)
 {
-	crt_ctx_init_opt_t	opt = {.ccio_na = "ofi+sockets"};
+	crt_ctx_init_opt_t	opt = {.ccio_prov = "ofi+sockets"};
 	int			na_type;
 	crt_phy_addr_t		addr_env;
 
@@ -216,8 +216,8 @@ crt_context_create(crt_context_t *crt_ctx)
 		D_DEBUG(DB_ALL, "ENV %s not found.\n", CRT_PHY_ADDR_ENV);
 
 	na_type = crt_gdata.cg_na_plugin;
-	opt.ccio_ni = crt_na_ofi_conf.noc_interface;
-	opt.ccio_na = addr_env;
+	opt.ccio_interface = crt_na_ofi_conf.noc_interface;
+	opt.ccio_prov = addr_env;
 	opt.ccio_port = crt_na_ofi_conf.noc_port;
 	opt.ccio_share_na = crt_gdata.cg_share_na[na_type];
 	opt.ccio_ctx_max_num = crt_gdata.cg_ctx_max_num[na_type];
@@ -238,7 +238,7 @@ crt_context_create_opt(crt_context_t *crt_ctx, crt_ctx_init_opt_t *opt)
 		D_GOTO(out, rc = -DER_INVAL);
 	}
 
-	rc = crt_parse_na_type(&na_type, opt->ccio_na);
+	rc = crt_parse_na_type(&na_type, opt->ccio_prov);
 	if (rc != DER_SUCCESS) {
 		D_ERROR("crt_parse_na_type() failed rc %d\n", rc);
 		return rc;
@@ -247,7 +247,7 @@ crt_context_create_opt(crt_context_t *crt_ctx, crt_ctx_init_opt_t *opt)
 	/**
 	 * for existing providers, make sure number of contexts is within limit
 	 */
-	na_conf = crt_na_config_lookup(opt->ccio_ni, opt->ccio_na,
+	na_conf = crt_na_config_lookup(opt->ccio_interface, opt->ccio_prov,
 				       true /* need_lock */);
 	if (na_conf && crt_gdata.cg_share_na[na_type] &&
 	    crt_gdata.cg_ctx_num[na_type] >= crt_gdata.cg_ctx_max_num[na_type]) {
@@ -280,7 +280,7 @@ crt_context_create_opt(crt_context_t *crt_ctx, crt_ctx_init_opt_t *opt)
 		D_GOTO(out, rc);
 	}
 
-	na_conf = crt_na_config_lookup(opt->ccio_ni, opt->ccio_na,
+	na_conf = crt_na_config_lookup(opt->ccio_interface, opt->ccio_prov,
 					       true /* need_lock */);
 	if (na_conf == NULL) {
 		D_ERROR("crt_na_config_lookup() failed, rc %d\n", rc);

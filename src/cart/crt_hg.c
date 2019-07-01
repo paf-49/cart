@@ -494,7 +494,7 @@ crt_get_info_string_opt(char **string, crt_ctx_init_opt_t *opt)
 	struct na_ofi_config	*na_conf;
 	int			 rc;
 
-	rc = crt_parse_na_type(&plugin, opt->ccio_na);
+	rc = crt_parse_na_type(&plugin, opt->ccio_prov);
 	if (rc != DER_SUCCESS) {
 		D_ERROR("crt_parse_na_type() failed rc %d\n", rc);
 		return rc;
@@ -505,7 +505,8 @@ crt_get_info_string_opt(char **string, crt_ctx_init_opt_t *opt)
 	if (!crt_na_dict[plugin].nad_port_bind) {
 		D_ASPRINTF(*string, "%s://", plugin_str);
 	} else {
-		na_conf = crt_na_config_lookup(opt->ccio_ni, opt->ccio_na,
+		na_conf = crt_na_config_lookup(opt->ccio_interface,
+					       opt->ccio_prov,
 					       true /* need_lock */);
 		D_ASSERTF(na_conf != NULL, "na_conf can't be NULL\n");
 		port = na_conf->noc_port;
@@ -695,7 +696,7 @@ crt_hg_init_ground_up(crt_ctx_init_opt_t *opt,
 	int			 na_type;
 	int			 rc;
 
-	rc = crt_parse_na_type(&na_type, opt->ccio_na);
+	rc = crt_parse_na_type(&na_type, opt->ccio_prov);
 	if (rc != DER_SUCCESS) {
 		D_DEBUG(DB_TRACE, "crt_parse_na_type() failed rc %d\n",
 			rc);
@@ -788,7 +789,7 @@ crt_hg_ctx_init_opt(struct crt_hg_context *hg_ctx, int idx,
 	crt_ctx = container_of(hg_ctx, struct crt_context, cc_hg_ctx);
 	D_ASSERT(opt != NULL);
 
-	rc = crt_parse_na_type(&na_type, opt->ccio_na);
+	rc = crt_parse_na_type(&na_type, opt->ccio_prov);
 	if (rc != DER_SUCCESS) {
 		D_ERROR("crt_parse_na_type() failed, rc %d\n", rc);
 		D_GOTO(out, rc);
@@ -799,12 +800,12 @@ crt_hg_ctx_init_opt(struct crt_hg_context *hg_ctx, int idx,
 	if (opt->ccio_share_na == 1)
 		reuse_na_ctx = true;
 
-	na_conf = crt_na_config_lookup(opt->ccio_ni, opt->ccio_na,
+	na_conf = crt_na_config_lookup(opt->ccio_interface, opt->ccio_prov,
 			true /* need_lock */);
 	if (na_conf == NULL) {
 		/* not found */
 		D_DEBUG(DB_ALL, "interface %s not initialized yet.\n",
-				opt->ccio_ni);
+				opt->ccio_interface);
 		crt_na_ofi_config_init_opt(opt);
 
 		rc = crt_hg_init_ground_up(opt, &na_class, &hg_class);
@@ -820,7 +821,8 @@ crt_hg_ctx_init_opt(struct crt_hg_context *hg_ctx, int idx,
 		reuse_na_ctx = true;
 	} else {
 		/* lookup_hg_cass_by_interface_and_provider */
-		ctx_tmp = crt_context_lookup_prov(opt->ccio_ni, opt->ccio_na,
+		ctx_tmp = crt_context_lookup_prov(opt->ccio_interface,
+						  opt->ccio_prov,
 						  false);
 		if (ctx_tmp == NULL) {
 			D_ERROR("Interface %s initialized but no context "

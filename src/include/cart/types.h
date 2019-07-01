@@ -97,9 +97,9 @@ typedef struct crt_init_options {
 
 typedef struct crt_ctx_init_opt {
 	/* interface name */
-	char		*ccio_ni;
-	/* na plugin name, e.g. ofi+sockets or ofi+psm2 */
-	char		*ccio_na;
+	char		*ccio_interface;
+	/* provider name, e.g. ofi+sockets or ofi+psm2 */
+	char		*ccio_prov;
 	int		 ccio_port;
 	/**
 	 * 1 means to use scalable endpoint, 0 means do not use scalable
