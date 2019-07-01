@@ -241,8 +241,6 @@ test_init(void)
 	D_ASSERTF(rc == 0, "sem_init() failed.\n");
 
 	flag = CRT_FLAG_BIT_PMIX_DISABLE | CRT_FLAG_BIT_LM_DISABLE;
-	// crt_init() reads OIF_INTERFACE, PHY_ADDR, and OFI_PORT. Currently
-	// step 1
 	rc = crt_init(test_g.t_local_group_name, flag);
 	D_ASSERTF(rc == 0, "crt_init() failed, rc: %d\n", rc);
 
@@ -267,18 +265,9 @@ test_init(void)
 		sleep(1);
 	}
 	assert(rc == 0);
-if (0) {
-
-	// attach step 2
-	rc = crt_group_view_create("server_grp", &test_g.t_remote_group);
-	if (!test_g.t_remote_group || rc != 0) {
-		D_ERROR("Failed to create group view; rc=%d\n", rc);
-		assert(0);
-	}
-}
 
 	D_DEBUG(DB_TEST, "here.\n");
-	// step 3 create context 0
+
 	for (i = 0; i < test_g.t_ctx_num; i++) {
 		rc = crt_context_create(&test_g.t_crt_ctx[i]);
 		D_ASSERTF(rc == 0, "crt_context_create() failed. rc: %d\n", rc);
@@ -286,16 +275,6 @@ if (0) {
 				    &test_g.t_thread_id[i]);
 		D_ASSERTF(rc == 0, "pthread_create() failed. rc: %d\n", rc);
 	}
-
-if (0) {
-//	grp_cfg_file = getenv("CRT_L_GRP_CFG");
-//	rc = tc_load_group_from_file(grp_cfg_file, test_g.t_remote_group, NUM_SERVER_CTX,
-//				-1, false);
-//	if (rc != 0) {
-//		D_ERROR("tc_load_group_from_file() failed; rc=%d\n", rc);
-//		assert(0);
-//	}
-} // if (0) {
 
 	rc = crt_group_size(test_g.t_remote_group, &test_g.t_remote_group_size);
 	if (rc != 0) {
@@ -439,9 +418,11 @@ test_fini()
 	rc = sem_destroy(&test_g.t_token_to_proceed);
 	D_ASSERTF(rc == 0, "sem_destroy() failed.\n");
 
-//	if (test_g.t_is_service) {
-//		crt_swim_fini();
-//	}
+	/*
+	if (test_g.t_is_service) {
+		crt_swim_fini();
+	}
+	*/
 
 	rc = crt_finalize();
 	D_ASSERTF(rc == 0, "crt_finalize() failed. rc: %d\n", rc);

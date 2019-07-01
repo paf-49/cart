@@ -107,14 +107,6 @@ show_usage(const char *msg)
 	printf("----------------------------------------------\n");
 }
 
-#if 0
-#define YULU_DEBUG \
-	D_DEBUG(DB_ALL, "here on line %s:%s:%d\n", __FILE__, __func__, __LINE__)
-#endif
-
-#define YULU_DEBUG \
-	fprintf(stderr, "here on line %s:%s:%d\n", __FILE__, __func__, __LINE__);
-
 static int
 parse_args(int argc, char **argv)
 {
@@ -134,20 +126,16 @@ parse_args(int argc, char **argv)
 			break;
 		switch (rc) {
 		case 'c':
-			YULU_DEBUG;
 			g_opt.is_client = true;
 			break;
 		case 'h':
-			YULU_DEBUG;
 			g_opt.show_help = true;
 			break;
 		case 'e':
-			YULU_DEBUG;
 			g_opt.app_to_exec = optarg;
 			g_opt.app_args_indx = optind - 1;
 			return 0;
 		default:
-			YULU_DEBUG;
 			g_opt.show_help = true;
 			return 1;
 		}
@@ -222,80 +210,6 @@ out:
 	return rc;
 }
 
-static int
-get_self_uri_psm2(struct host *h)
-{
-	char		*uri;
-	crt_context_t	ctx;
-	char		*p;
-	int		len;
-	int		rc;
-	char		*ofi_interface_env;
-	char		*phy_addr_env;
-
-	ofi_interface_env = getenv("OFI_INTERFACE");
-	phy_addr_env = getenv("CRT_PHY_ADDR_STR");
-
-	setenv("OFI_INTERFACE", "ib0", true);
-	setenv("CRT_PHY_ADDR_STR", "ofi+psm2", true);
-	rc = crt_init(0, CRT_FLAG_BIT_SERVER | CRT_FLAG_BIT_PMIX_DISABLE |
-			CRT_FLAG_BIT_LM_DISABLE);
-	if (rc != 0) {
-		D_ERROR("crt_init() failed; rc=%d\n", rc);
-		D_GOTO(out, rc);
-	}
-
-	rc = crt_context_create(&ctx);
-	if (rc != 0) {
-		D_ERROR("crt_context_create() failed; rc=%d\n", rc);
-		D_GOTO(out, rc);
-	}
-
-	rc = crt_self_uri_get(0, &uri);
-	if (rc != 0) {
-		D_ERROR("crt_self_uri_get() failed; rc=%d\n", rc);
-		D_GOTO(out, rc);
-	}
-
-	len = strlen(uri);
-
-	/* Find port number - first from the end number separated by :*/
-	/* URIs have a form of: ofi+sockets://10.8.1.55:48259 */
-	p = uri+len;
-	while (*p != ':') {
-		p--;
-		if (p == uri)
-			break;
-	}
-
-	/* Replace : with space */
-	*p = ' ';
-
-	p++;
-	h->ofi_port = atoi(p);
-	strncpy(h->self_uri, uri, URI_MAX-1);
-
-	D_FREE(uri);
-
-	rc = crt_context_destroy(ctx, 1);
-	if (rc != 0) {
-		D_ERROR("ctx_context_destroy() failed; rc=%d\n", rc);
-		D_GOTO(out, rc);
-	}
-
-	rc = crt_finalize();
-	if (rc != 0) {
-		D_ERROR("crt_finalize() failed; rc=%d\n", rc);
-		D_GOTO(out, rc);
-	}
-
-out:
-	setenv("OFI_INTERFACE", ofi_interface_env, true);
-	setenv("CRT_PHY_ADDR_STR", phy_addr_env, true);
-
-	return rc;
-}
-
 /*
  * Generate group configuration file. Each entry consists of
  * rank<space>uri lines.
@@ -309,11 +223,7 @@ generate_group_file(int world_size, struct host *h)
 	char	grp_info_template[] = "/tmp/crt_launch-info-XXXXXXX";
 	int	tmp_fd;
 	int	i;
-	char		*phy_addr_env;
 
-	phy_addr_env = getenv("CRT_PHY_ADDR_STR");
-	if (g_opt.is_client && strcmp(phy_addr_env, "ofi+sockets"))
-		return 0;
 	tmp_fd = mkstemp(grp_info_template);
 
 	if (tmp_fd == -1) {
@@ -327,16 +237,11 @@ generate_group_file(int world_size, struct host *h)
 		printf("fopen failed on %s, error: %s\n",
 			grp_info_template, strerror(errno));
 		return -1;
-	} else {
-		fprintf(stderr, "Opened %s for writing, phy_addr_env %s\n",
-				grp_info_template, phy_addr_env);
 	}
 
 	for (i = 0; i < world_size; i++) {
-		int j = i*2;
-		if (h[j].is_client == false)
-			fprintf(f, "%d %s\n", h[j].my_rank, h[j].self_uri);
-			fprintf(stderr, "%d %s\n", h[j].my_rank, h[j].self_uri);
+		if (h[i].is_client == false)
+			fprintf(f, "%d %s\n", h[i].my_rank, h[i].self_uri);
 	}
 
 	fclose(f);
@@ -345,47 +250,6 @@ generate_group_file(int world_size, struct host *h)
 	return 0;
 }
 
-static int
-generate_group_file_psm2(int world_size, struct host *h)
-{
-	FILE	*f;
-	char	grp_info_template[] = "/tmp/crt_launch-info-XXXXXXX";
-	int	tmp_fd;
-	int	i;
-	char		*phy_addr_env;
-
-	phy_addr_env = getenv("CRT_PHY_ADDR_STR");
-	if (g_opt.is_client && strcmp(phy_addr_env, "ofi+psm2"))
-		return 0;
-	tmp_fd = mkstemp(grp_info_template);
-
-	if (tmp_fd == -1) {
-		D_ERROR("mkstemp() failed on %s, error: %s\n",
-			grp_info_template, strerror(errno));
-		return -1;
-	}
-
-	f = fdopen(tmp_fd, "w");
-	if (f == NULL) {
-		printf("fopen failed on %s, error: %s\n",
-			grp_info_template, strerror(errno));
-		return -1;
-	} else {
-		fprintf(stderr, "Opened %s for writing psm2, phy_addr_env %s\n",
-				grp_info_template, phy_addr_env);
-	}
-
-	for (i = 0; i < world_size; i++) {
-		int j = i * 2 + 1;
-		if (h[j].is_client == false)
-			fprintf(f, "%d %s\n", h[j].my_rank, h[j].self_uri);
-	}
-
-	fclose(f);
-	setenv("CRT_L_GRP_CFG", grp_info_template, true);
-
-	return 0;
-}
 
 int main(int argc, char **argv)
 {
@@ -395,8 +259,7 @@ int main(int argc, char **argv)
 	int		rc = 0;
 	char		str_rank[255];
 	char		str_port[255];
-    char        *log_file_name;
-    char        new_log_file_name[512];
+
 	if (argc < 2) {
 		show_usage("Insufficient number of arguments");
 		return -1;
@@ -418,10 +281,6 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	log_file_name = getenv("D_LOG_FILE");
-    snprintf(new_log_file_name, 512, "%s-launcher", log_file_name);
-	setenv("D_LOG_FILE", new_log_file_name, true);
-	YULU_DEBUG;
 	/*
 	 * Using MPI negotiate ranks between each process and retrieve
 	 * URI.
@@ -431,14 +290,13 @@ int main(int argc, char **argv)
 	MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
-	YULU_DEBUG;
-	hostbuf = calloc(sizeof(*hostbuf), 2);
+	hostbuf = calloc(sizeof(*hostbuf), 1);
 	if (!hostbuf) {
 		D_ERROR("Failed to allocate hostbuf\n");
 		D_GOTO(exit, rc = -1);
 	}
 
-	recv_buf = calloc(sizeof(struct host), world_size*2);
+	recv_buf = calloc(sizeof(struct host), world_size);
 	if (!recv_buf) {
 		D_ERROR("Failed to allocate recv_buf\n");
 		D_GOTO(exit, rc = -1);
@@ -451,28 +309,10 @@ int main(int argc, char **argv)
 		D_ERROR("Failed to retrieve self uri\n");
 		D_GOTO(exit, rc);
 	}
-	fprintf(stderr, "first self_uri %d %s\n", hostbuf[0].my_rank, hostbuf[0].self_uri);
 
-	hostbuf[1].is_client = g_opt.is_client;
-	hostbuf[1].my_rank = my_rank;
-	rc = get_self_uri_psm2(&hostbuf[1]);
-	if (rc != 0) {
-		D_ERROR("Failed to retrieve self uri\n");
-		D_GOTO(exit, rc);
-	}
-	fprintf(stderr, "first self_uri %d %s\n", hostbuf[0].my_rank, hostbuf[0].self_uri);
-
-	fprintf(stderr, "self_uri %d %s\n", hostbuf[0].my_rank, hostbuf[0].self_uri);
-	fprintf(stderr, "self_uri %d %s\n", hostbuf[1].my_rank, hostbuf[1].self_uri);
-	MPI_Allgather(hostbuf, sizeof(struct host)*2, MPI_CHAR,
-		recv_buf, sizeof(struct host)*2, MPI_CHAR,
+	MPI_Allgather(hostbuf, sizeof(struct host), MPI_CHAR,
+		recv_buf, sizeof(struct host), MPI_CHAR,
 		   MPI_COMM_WORLD);
-
-	rc = generate_group_file_psm2(world_size, recv_buf);
-	if (rc != 0) {
-		D_ERROR("generate_group_file_psm2() failed\n");
-		D_GOTO(exit, rc);
-	}
 
 	/* Generate group configuration file */
 	rc = generate_group_file(world_size, recv_buf);
@@ -497,7 +337,6 @@ exit:
 	/* Set CRT_L_RANK and OFI_PORT */
 	setenv("CRT_L_RANK", str_rank, true);
 	setenv("OFI_PORT", str_port, true);
-	setenv("D_LOG_FILE", log_file_name, true);
 
 	if (rc == 0) {
 		/* Exec passed application with rest of arguments */

@@ -63,12 +63,12 @@
 	do {								\
 		if (test_g.t_is_service)				\
 			fprintf(stderr, "SRV [rank=%d pid=%d]\t",	\
-			test_g.t_my_rank,					\
-			test_g.t_my_pid);					\
+			test_g.t_my_rank,				\
+			test_g.t_my_pid);				\
 		else							\
 			fprintf(stderr, "CLI [rank=%d pid=%d]\t",	\
-			test_g.t_my_rank,					\
-			test_g.t_my_pid);					\
+			test_g.t_my_rank,				\
+			test_g.t_my_pid);				\
 		fprintf(stderr, x);					\
 	} while (0)
 
@@ -112,13 +112,6 @@ struct test_t test_g = {
 	.t_roomno = 1082
 };
 
-int
-load_group_from_file(const char *grp_cfg_file, crt_group_t *grp,
-		int num_contexts,
-		d_rank_t my_rank, bool delete_file)
-{
-	return 0;
-};
 static inline void
 test_sem_timedwait(sem_t *sem, int sec, int line_number)
 {
@@ -348,8 +341,10 @@ test_init(void)
 
 	flag = CRT_FLAG_BIT_SERVER |
 		CRT_FLAG_BIT_PMIX_DISABLE | CRT_FLAG_BIT_LM_DISABLE;
-	// crt_init() reads OIF_INTERFACE, PHY_ADDR, and OFI_PORT. Currently
-	// these ENVs are the only way to control crt_init()
+	/**
+	 * crt_init() reads OIF_INTERFACE, PHY_ADDR, and OFI_PORT. Currently
+	 * these ENVs are the only way to control crt_init()
+	 */
 	rc = crt_init(test_g.t_local_group_name, flag);
 
 	D_ASSERTF(rc == 0, "crt_init() failed, rc: %d\n", rc);
@@ -360,8 +355,10 @@ test_init(void)
 	D_ASSERTF(rc == 0, "crt_proto_register() failed. rc: %d\n", rc);
 	YULU_DEBUG;
 
-//	rc = crt_swim_init(DEFAULT_PROGRESS_CTX_IDX);
-//	D_ASSERTF(rc == DER_SUCCESS, "crt_swim_init() failed rc: %d.\n", rc);
+	/*
+	rc = crt_swim_init(DEFAULT_PROGRESS_CTX_IDX);
+	D_ASSERTF(rc == DER_SUCCESS, "crt_swim_init() failed rc: %d.\n", rc);
+	*/
 
 	test_g.t_fault_attr_1000 = d_fault_attr_lookup(1000);
 	test_g.t_fault_attr_5000 = d_fault_attr_lookup(5000);
@@ -408,12 +405,11 @@ test_init(void)
 		assert(0);
 	}
 
-	/* load group info from a config file, create contexts, populate peer
+	/**
+	 * load group info from a config file, create contexts, populate peer
 	 * rank URIs based on config file.  and delete file upon return if so
 	 * requested
 	 */
-	// this func should return a base URI string to use with crt_init() or
-	// crt_context_create().
 	grp_cfg_file = getenv("CRT_L_GRP_CFG");
 	rc = tc_load_group_from_file(grp_cfg_file, test_g.t_crt_ctx[0],
 			test_g.t_local_group, test_g.t_my_rank,
@@ -432,11 +428,8 @@ test_init(void)
 		D_ERROR("crt_group_size() failed; rc=%d\n", rc);
 		assert(0);
 	}
-	///////////////////////////////
-	// create psm2 contexts
-	// the file needs to contain the port number and the URI
-	load_group_from_file(grp_cfg_file, test_g.t_local_group,
-			NUM_SERVER_CTX_PSM2, test_g.t_my_rank, true);
+
+	/* create psm2 contexts */
 	for (i = 0; i < test_g.t_ctx_num_psm2; i++) {
 		int j = i + test_g.t_ctx_num;
 		ctx_opt.ccio_interface = "ib0";
@@ -446,7 +439,8 @@ test_init(void)
 		ctx_opt.ccio_ctx_max_num = 1;
 		test_g.t_thread_id[j] = j;
 		rc = crt_context_create_opt(&test_g.t_crt_ctx[j], &ctx_opt);
-		D_ASSERTF(rc == 0, "crt_context_create_opt() failed. rc: %d\n", rc);
+		D_ASSERTF(rc == 0, "crt_context_create_opt() failed. rc: %d\n",
+			  rc);
 		rc = pthread_create(&test_g.t_tid[j], NULL, progress_func,
 				    &test_g.t_thread_id[j]);
 		D_ASSERTF(rc == 0, "pthread_create() failed. rc: %d\n", rc);
@@ -505,14 +499,18 @@ test_fini()
 
 	rc = sem_destroy(&test_g.t_token_to_proceed);
 	D_ASSERTF(rc == 0, "sem_destroy() failed.\n");
-//	if (test_g.t_is_service && test_g.t_my_rank == 0) {
-//		rc = crt_group_config_remove(NULL);
-//		assert(rc == 0);
-//	}
+	/*
+	if (test_g.t_is_service && test_g.t_my_rank == 0) {
+		rc = crt_group_config_remove(NULL);
+		assert(rc == 0);
+	}
+	*/
 
-//	if (test_g.t_is_service) {
-//		crt_swim_fini();
-//	}
+	/*
+	if (test_g.t_is_service) {
+		crt_swim_fini();
+	}
+	*/
 
 	rc = crt_finalize();
 	D_ASSERTF(rc == 0, "crt_finalize() failed. rc: %d\n", rc);
