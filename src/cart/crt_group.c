@@ -631,36 +631,18 @@ crt_grp_lc_uri_remove(struct crt_grp_priv *passed_grp_priv, int na_type,
 	d_hash_rec_delete_at(&grp_priv->gp_lookup_cache[na_type][ctx_idx], rlink);
 }
 
-/*
- * Fill in the base URI of rank in the lookup cache of the crt_ctx.
- */
-int
-crt_grp_lc_uri_insert(struct crt_grp_priv *passed_grp_priv, int na_type,
-		      int ctx_idx, d_rank_t rank, uint32_t tag, const char *uri)
+
+static int
+grp_lc_uri_insert_internal_locked(struct crt_grp_priv *grp_priv,
+				int na_type,
+				int ctx_idx, d_rank_t rank,
+				uint32_t tag,
+				const char *uri)
 {
 	struct crt_lookup_item	*li;
 	int			 rc = 0;
 	d_list_t		*rlink;
 
-	D_ASSERT(ctx_idx >= 0 && ctx_idx < CRT_SRV_CONTEXT_NUM);
-	if (tag >= CRT_SRV_CONTEXT_NUM) {
-		D_ERROR("tag %d out of range [0, %d].\n",
-			tag, CRT_SRV_CONTEXT_NUM - 1);
-		return -DER_INVAL;
-	}
-
-	grp_priv = passed_grp_priv;
-
-	if (passed_grp_priv->gp_primary == 0) {
-		if (CRT_PMIX_ENABLED())
-			grp_priv = crt_grp_pub2priv(NULL);
-		else
-			grp_priv = passed_grp_priv->gp_priv_prim;
-
-		rank = grp_priv_get_primary_rank(passed_grp_priv, rank);
-	}
-
-	D_RWLOCK_WRLOCK(&grp_priv->gp_rwlock);
 	rlink = d_hash_rec_find(&grp_priv->gp_lookup_cache[na_type][ctx_idx],
 				(void *)&rank, sizeof(rank));
 	if (rlink == NULL) {
@@ -696,7 +678,7 @@ crt_grp_lc_uri_insert(struct crt_grp_priv *passed_grp_priv, int na_type,
 			crt_li_destroy(li);
 			rc = 0;
 		} else {
-			D_DEBUG(DB_TRACE, "Filled in URI in lookup table. "
+			D_DEBUG(DB_TRACE, "Filling in URI in lookup table. "
 				" grp_priv %p ctx_idx %d, rank: %d, rlink %p\n",
 				grp_priv, ctx_idx, rank, &li->li_link);
 		}
@@ -729,9 +711,6 @@ crt_grp_lc_uri_insert(struct crt_grp_priv *passed_grp_priv, int na_type,
 
 decref:
 	d_hash_rec_decref(&grp_priv->gp_lookup_cache[na_type][ctx_idx], rlink);
-
-unlock:
-	D_RWLOCK_UNLOCK(&grp_priv->gp_rwlock);
 	return rc;
 
 err_destroy_mutex:
@@ -743,12 +722,13 @@ err_free_li:
 out:
 	return rc;
 }
+
 /*
  * Fill in the base URI of rank in the lookup cache of the crt_ctx.
  */
 int
-crt_grp_lc_uri_insert(struct crt_grp_priv *passed_grp_priv, int ctx_idx,
-		      d_rank_t rank, uint32_t tag, const char *uri)
+crt_grp_lc_uri_insert(struct crt_grp_priv *passed_grp_priv, int na_type,
+		      int ctx_idx, d_rank_t rank, uint32_t tag, const char *uri)
 {
 	struct crt_grp_priv	*grp_priv;
 	int			 rc = 0;
@@ -772,7 +752,7 @@ crt_grp_lc_uri_insert(struct crt_grp_priv *passed_grp_priv, int ctx_idx,
 	}
 
 	D_RWLOCK_WRLOCK(&grp_priv->gp_rwlock);
-	rc = grp_lc_uri_insert_internal_locked(grp_priv, ctx_idx, rank, tag,
+	rc = grp_lc_uri_insert_internal_locked(grp_priv, na_type, ctx_idx, rank, tag,
 						uri);
 	D_RWLOCK_UNLOCK(&grp_priv->gp_rwlock);
 
@@ -4674,40 +4654,28 @@ crt_group_rank_remove_internal(struct crt_grp_priv *grp_priv, d_rank_t rank)
 	d_rank_list_t		*membs;
 	d_list_t		*rlink;
 	struct crt_rank_mapping *rm;
-	struct crt_grp_priv	*sec_priv;
 	int			 i;
 	int			 na_type;
 	int			 rc = -DER_OOG;
 
-	if (CRT_PMIX_ENABLED()) {
-		D_ERROR("This api only avaialble when PMIX is disabled\n");
-		D_GOTO(out, rc = -DER_INVAL);
-	}
-
-	if (group == NULL) {
-		D_ERROR("Passed group is NULL\n");
-		D_GOTO(out, rc = -DER_INVAL);
-	}
-
-	na_type = crt_gdata.cg_na_plugin;
-	grp_priv = crt_grp_pub2priv(group);
-
 	if (grp_priv->gp_primary) {
-		rlink = d_hash_rec_find(&grp_priv->gp_uri_lookup_cache[na_type],
+		for (na_type = 0; na_type < CRT_NA_TYPE_NUM; na_type++) {
+			rlink = d_hash_rec_find(&grp_priv->gp_uri_lookup_cache[na_type],
 					(void *)&rank, sizeof(rank));
-		if (!rlink) {
-			D_ERROR("Rank %d is not part of the group\n", rank);
-			D_GOTO(out, rc = -DER_OOG);
+			if (!rlink) {
+				D_ERROR("Rank %d is not part of the group\n", rank);
+				D_GOTO(out, rc = -DER_OOG);
+			}
+
+			d_hash_rec_decref(&grp_priv->gp_uri_lookup_cache[na_type],
+					rlink);
+
+			for (i = 0; i < CRT_SRV_CONTEXT_NUM; i++)
+				crt_grp_lc_uri_remove(grp_priv, na_type, i, rank);
+
+			d_hash_rec_delete(&grp_priv->gp_uri_lookup_cache[na_type],
+					&rank, sizeof(d_rank_t));
 		}
-
-		d_hash_rec_decref(&grp_priv->gp_uri_lookup_cache[na_type],
-				  rlink);
-
-		for (i = 0; i < CRT_SRV_CONTEXT_NUM; i++)
-			crt_grp_lc_uri_remove(grp_priv, na_type, i, rank);
-
-		d_hash_rec_delete(&grp_priv->gp_uri_lookup_cache[na_type],
-				  &rank, sizeof(d_rank_t));
 	} else {
 		d_rank_t prim_rank;
 
@@ -5465,8 +5433,10 @@ crt_group_primary_modify(crt_group_t *grp, crt_context_t *ctxs, int num_ctxs,
 	d_rank_list_t		*to_add;
 	uint32_t		*uri_idx;
 	d_rank_t		rank;
+	int			na_type;
 	int			k;
 	int			i;
+	int			j;
 	int			rc = 0;
 
 	grp_priv = crt_grp_pub2priv(grp);
@@ -5518,12 +5488,16 @@ crt_group_primary_modify(crt_group_t *grp, crt_context_t *ctxs, int num_ctxs,
 		}
 
 		/* TODO: Change for multi-provider support */
-		for (k = 0; k < CRT_SRV_CONTEXT_NUM; k++) {
-			rc = grp_lc_uri_insert_internal_locked(grp_priv,
-				k, rank, 0, uris[uri_idx[i]]);
+		for (j = 0; j < num_ctxs; j++) {
+			na_type = crt_context_na_type(ctxs[j]);
+			for (k = 0; k < CRT_SRV_CONTEXT_NUM; k++) {
+				rc = grp_lc_uri_insert_internal_locked(grp_priv,
+					na_type, k, rank, 0,
+					uris[uri_idx[i] * num_ctxs + j]);
 
-			if (rc != 0)
-				D_GOTO(cleanup, rc);
+				if (rc != 0)
+					D_GOTO(cleanup, rc);
+			}
 		}
 	}
 
