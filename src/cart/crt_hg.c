@@ -1174,6 +1174,9 @@ crt_hg_req_send(struct crt_rpc_priv *rpc_priv)
 {
 	hg_return_t	 hg_ret;
 	int		 rc = DER_SUCCESS;
+        crt_rpc_t                       *req;
+        struct crt_context              *ctx;
+
 
 	D_ASSERT(rpc_priv != NULL);
 
@@ -1189,6 +1192,22 @@ crt_hg_req_send(struct crt_rpc_priv *rpc_priv)
 		RPC_ERROR(rpc_priv,
 			  "HG_Forward failed, hg_ret: %d\n",
 			  hg_ret);
+		if (hg_ret == HG_FI_EAGAIN) {
+			/*Put in retry queue.*/
+			req = &rpc_priv->crp_pub;
+			ctx = req->cr_ctx;
+			D_MUTEX_LOCK(&ctx->cc_mutex);
+			D_INIT_LIST_HEAD(&rpc_priv->crp_retry);
+			d_list_add_tail(&rpc_priv->crp_retry, &ctx->cc_retry);
+			D_MUTEX_UNLOCK(&ctx->cc_mutex);
+			RPC_ADDREF(rpc_priv);
+			RPC_TRACE(DB_TRACE, rpc_priv,
+			  	"will retry send to rank later%d uri: %s\n",
+			  	rpc_priv->crp_pub.cr_ep.ep_rank,
+			  	rpc_priv->crp_tgt_uri);
+  
+		}
+	
 	} else {
 		RPC_TRACE(DB_TRACE, rpc_priv,
 			  "sent to rank %d uri: %s\n",
@@ -1204,7 +1223,7 @@ crt_hg_req_send(struct crt_rpc_priv *rpc_priv)
 			crt_req_force_timeout(rpc_priv);
 		}
 		rpc_priv->crp_state = RPC_STATE_FWD_UNREACH;
-	} else if (hg_ret != HG_SUCCESS) {
+	} else if (hg_ret != HG_SUCCESS && hg_ret != HG_FI_EAGAIN) {
 		rc = -DER_HG;
 	} else {
 		rpc_priv->crp_on_wire = 1;

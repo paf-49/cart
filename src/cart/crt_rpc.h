@@ -158,6 +158,10 @@ struct crt_rpc_priv {
 	d_list_t		crp_tmp_link;
 	/* link to parent RPC crp_opc_info->co_child_rpcs/co_replied_rpcs */
 	d_list_t		crp_parent_link;
+	/* tmp_link used in crt_context cc_retry */
+	d_list_t		crp_retry;
+	d_list_t		crp_retry_copy;
+
 	/* binheap node for timeout management, in crt_context::cc_bh_timeout */
 	struct d_binheap_node	crp_timeout_bp_node;
 	/* the timeout in seconds set by user */

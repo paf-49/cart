@@ -167,6 +167,7 @@ extern struct crt_plugin_gdata		crt_plugin_gdata;
 /* crt_context */
 struct crt_context {
 	d_list_t		 cc_link; /* link to gdata.cg_ctx_list */
+	d_list_t		 cc_retry; /* list of send retries */
 	int			 cc_idx; /* context index */
 	struct crt_hg_context	 cc_hg_ctx; /* HG context */
 	void			*cc_rpc_cb_arg;
@@ -180,6 +181,7 @@ struct crt_context {
 	/* timeout per-context */
 	uint32_t		 cc_timeout_sec;
 };
+
 
 /* in-flight RPC req list, be tracked per endpoint for every crt_context */
 struct crt_ep_inflight {

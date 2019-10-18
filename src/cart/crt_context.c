@@ -175,6 +175,7 @@ crt_context_init(crt_context_t crt_ctx)
 		D_GOTO(out, rc);
 
 	D_INIT_LIST_HEAD(&ctx->cc_link);
+	D_INIT_LIST_HEAD(&ctx->cc_retry);
 
 	/* create timeout binheap */
 	bh_node_cnt = CRT_DEFAULT_CREDITS_PER_EP_CTX * 64;
@@ -1203,6 +1204,11 @@ crt_progress(crt_context_t crt_ctx, int64_t timeout,
 	uint64_t		 now;
 	uint64_t		 end = 0;
 	int			 rc = 0;
+	struct crt_rpc_priv 	*rpc_priv;
+	d_list_t		retry_list;
+
+	ctx = crt_ctx;
+	D_INIT_LIST_HEAD(&retry_list);
 
 	/** validate input parameters */
 	if (crt_ctx == CRT_CONTEXT_NULL) {
@@ -1228,7 +1234,6 @@ crt_progress(crt_context_t crt_ctx, int64_t timeout,
 			D_GOTO(out, rc);
 	}
 
-	ctx = crt_ctx;
 	if (timeout == 0 || cond_cb == NULL) { /** fast path */
 		crt_context_timeout_check(ctx);
 		crt_exec_progress_cb(ctx);
@@ -1307,7 +1312,30 @@ crt_progress(crt_context_t crt_ctx, int64_t timeout,
 		}
 	}
 out:
+	/* Empty out the retry list if there any entries. */
+	D_MUTEX_LOCK(&ctx->cc_mutex);
+	if (!d_list_empty(&ctx->cc_retry)) {
+		d_list_for_each_entry(rpc_priv, &ctx->cc_retry, 
+							crp_retry) {
+			RPC_TRACE(DB_TRACE, rpc_priv, "Copying retry list\n");
+			d_list_del(&rpc_priv->crp_retry);
+                        D_INIT_LIST_HEAD(&rpc_priv->crp_retry_copy);
+			d_list_add_tail(&rpc_priv->crp_retry_copy, &retry_list);
+		}
+	}
+	D_MUTEX_UNLOCK(&ctx->cc_mutex);
+
+	if (!d_list_empty(&retry_list)) {
+		d_list_for_each_entry(rpc_priv, &retry_list, 
+							crp_retry_copy) {
+			RPC_TRACE(DB_TRACE, rpc_priv, "Retrying send\n");
+			d_list_del(&rpc_priv->crp_retry_copy);
+			crt_hg_req_send(rpc_priv);
+			RPC_DECREF(rpc_priv);
+		}
+	}
 	return rc;
+
 }
 
 /**
